@@ -2,9 +2,12 @@
 #
 # HTTP::Lite.pm
 #
-# $Id: Lite.pm,v 1.7 2000/12/21 18:05:09 rhooper Exp rhooper $
+# $Id: Lite.pm,v 1.8 2002/01/09 00:56:59 rhooper Exp rhooper $
 #
 # $Log: Lite.pm,v $
+# Revision 1.8  2002/01/09 00:56:59  rhooper
+# *** empty log message ***
+#
 # Revision 1.7  2000/12/21 18:05:09  rhooper
 # FIxed post form MIME-Type -- was application/x-www-urlencoded should
 # have been x-www-form-urlencoded.
@@ -33,7 +36,7 @@ package HTTP::Lite;
 use vars qw($VERSION);
 use strict qw(vars);
 
-$VERSION = "1.0.0";
+$VERSION = "1.0.1";
 my $CRLF = "\r\n";
 
 # Required modules for Network I/O
@@ -67,12 +70,15 @@ sub initialize
   $self->{timeout} = 120;
   $self->{headers} = { 'User-Agent' => "HTTP::Lite/$VERSION" };
   $self->{HTTPReadBuffer} = "";
+  $self->{HTTP11} = 0;
 }
 
 sub reset
 {
   my $self = shift;
+  my $oldproto = $self->{HTTP11};
   $self->initialize;
+  $self->{HTTP11} = $oldproto;
 }
 
 
@@ -130,7 +136,11 @@ sub request
   }
 
   # Start the request (HTTP/1.1 mode)
-  http_writeline($fh, "$method $object HTTP/1.1$CRLF");
+  if ($self->{HTTP11}) {
+    http_writeline($fh, "$method $object HTTP/1.1$CRLF");
+  } else {
+    http_writeline($fh, "$method $object HTTP/1.0$CRLF");
+  }
 
   # Add some required headers
   # we only support a single transaction per request in this version.
@@ -167,8 +177,8 @@ sub request
   my $line = 0;
   while ($_ = $self->http_readline($fh))
   {
-    #print "reading: $chunkmode, $chunksize, $chunklength, $headmode, ".
-    #	length($self->{body}).": //$_//\n";
+    #print STDERR ">>>DEBUG>>> reading: $chunkmode, $chunksize, $chunklength, $headmode, ".
+    	length($self->{body})."\n"; #.": //$_//\n";
     $line++;
     if ($line == 1)
     {
@@ -221,7 +231,9 @@ sub request
         $chunksize = $_;
         $chunksize =~ s/^\s*|;.*$//g;
         $chunksize =~ s/\s*$//g;
+        my $cshx = $chunksize;
         $chunksize = hex($chunksize);
+        #print STDERR ">>>DEBUG>>>chunksize was $chunksize (HEX was $cshx)\n";
         if ($chunksize == 0)
         {
           $chunkmode = "entity-header";
@@ -380,6 +392,13 @@ sub get_header
   return $self->{'resp-headers'}{$header};
 }
 
+sub http11_mode
+{
+  my $self = shift;
+  my $mode = shift;
+
+  $self->{HTTP11} = $mode;
+}
 
 sub prepare_post
 {
@@ -408,7 +427,6 @@ sub http_writeline
   my ($fh,$line) = @_;
   syswrite($fh, $line, length($line));
 }
-
 
 sub http_readline
 {
@@ -518,6 +536,11 @@ parameters.
 =head1 METHODS
 
 =over 4
+
+=item http11_mode ( 0 | 1 )
+
+Turns on or off HTTP/1.1 support.  This is off by default due to broken
+HTTP/1.1 servers.  Use 1 to enable HTTP/1.1 support.
 
 =item request ( URL )
 
@@ -652,12 +675,14 @@ otherwise the results are undefined.
     
 =head1 BUGS
 
-    Some bugs likely still exist.  This is a beta version.
-    
     Large requests are stored in ram, potentially more than once
     due to HTTP/1.1 chunked transfer mode support.  A future
     version of this module may support writing requests to a
     filehandle to avoid excessive disk use.
+
+    Some broken HTTP/1.1 servers send incorrect chunk sizes
+    when transferring files.  HTTP/1.1 mode is now disabled by
+    default.
 
 =head1 ACKNOWLEDGEMENTS
 

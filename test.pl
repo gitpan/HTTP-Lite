@@ -20,7 +20,7 @@
 # Change 1..1 below to 1..last_test_to_print .
 # (It may become useful if the test is moved to ./t subdirectory.)
 
-BEGIN { $| = 1; print "1..21\n"; }
+BEGIN { $| = 1; print "1..27\n"; }
 END {print "not ok 1\n" unless $loaded;}
 use HTTP::Lite;
 use Lite;
@@ -48,10 +48,10 @@ to be successful, as one many tests currently requires a CGI script.
 
 What is the full URL for the above?  Enter 'none' to skip tests.
 EOF
-print STDERR "Location: [http://www.thetoybox.org/HTTP-Lite-Tests/] ";
+print STDERR "Location: [http://www.thetoybox.org/HTTP-Lite-Tests] ";
 $testpath = <>;
 chomp($testpath);
-$testpath = $testpath ? $testpath : "http://www.thetoybox.org/HTTP-Lite-Tests/";
+$testpath = $testpath ? $testpath : "http://www.thetoybox.org/HTTP-Lite-Tests";
 
 if ($testpath =~ /\s*'*none'*\s*/)
 {
@@ -81,6 +81,8 @@ if ($proxy =~ /\s*'*none'*\s*/)
 }
 
 $http = new HTTP::Lite;
+
+$http->http11_mode(1);
 
 print "\n\n";
 $testno = 2;
@@ -158,6 +160,7 @@ print "ok $testno\n"; $testno++;
 print "not " if $doc ne "line1\nline2\nline3";
 print "ok $testno\n"; $testno++;
 
+$http->http11_mode(0);
 $http->reset;
 $res = $http->request("$testpath/nle.html");
 $doc = $http->body;
@@ -165,6 +168,62 @@ print "not " if length($doc) != 19;
 print "ok $testno\n"; $testno++;
 print "not " if $doc ne "line1\nline2\nline3\n\n";
 print "ok $testno\n"; $testno++;
+$http->reset;
+$res = $http->request("$testpath/bigbinary.dat");
+$bin = $http->body;
+$http->reset;
+$res = $http->request("$testpath/bigbinary.dat.md5");
+chomp($binsum = $http->body);
+eval "use Digest::MD5 qw(md5_hex);";
+if ($@) {
+  print "ok $n (skipping test on this platform)\n";
+} else {
+  $sum = md5_hex($bin);
+  print "not " if $binsum ne $sum;
+  print "ok $testno\n"; 
+}
+$testno++;
+
+$http->http11_mode(1);
+$http->reset;
+$res = $http->request("$testpath/nle.html");
+$doc = $http->body;
+print "not " if length($doc) != 19;
+print "ok $testno\n"; $testno++;
+print "not " if $doc ne "line1\nline2\nline3\n\n";
+print "ok $testno\n"; $testno++;
+$http->reset;
+$res = $http->request("$testpath/bigbinary.dat");
+$bin = $http->body;
+$http->reset;
+$res = $http->request("$testpath/bigbinary.dat.md5");
+chomp($binsum = $http->body);
+eval "use Digest::MD5 qw(md5_hex);";
+if ($@) {
+  print "ok $n (skipping test on this platform)\n";
+} else {
+  $sum = md5_hex($bin);
+  print "not " if $binsum ne $sum;
+  print "ok $testno\n"; 
+}
+$testno++;
+
+$http->reset;
+$res = $http->request("$testpath/bigtest.txt");
+$bigtest = $http->body;
+
+$http->reset;
+$res = $http->request("$testpath/chunked4.cgi");
+$doc = $http->body;
+print "not " if $doc ne "$bigtest$bigtest${bigtest}chunk4chunk5\n";
+print "ok $testno\n"; $testno++;
+
+$http->reset;
+$res = $http->request("$testpath/chunked5.cgi");
+$doc = $http->body;
+print "not " if $doc ne "$bigtest$bin${bigtest}chunk4chunk5\n";
+print "ok $testno\n"; $testno++;
+
 
 } else {
   for ($n=$testno; $n < 20; $n++)
