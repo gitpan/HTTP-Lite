@@ -2,9 +2,15 @@
 #
 # HTTP::Lite.pm
 #
-# $Id: Lite.pm,v 1.4 2000/09/29 03:47:53 rhooper Exp rhooper $
+# $Id: Lite.pm,v 1.6 2000/11/02 01:47:58 rhooper Exp rhooper $
 #
 # $Log: Lite.pm,v $
+# Revision 1.6  2000/11/02 01:47:58  rhooper
+# Fixed a greedy regular expression in the URL decoder.  URLs with :// embedded now work.
+#
+# Revision 1.5  2000/10/31 01:27:03  rhooper
+# added proxy port support.
+#
 # Revision 1.4  2000/09/29 03:47:53  rhooper
 # Requests without a terminating CR or LF are now properly handled.
 # HTTP/1.1 chunked mode transfers are now supported
@@ -23,7 +29,7 @@ package HTTP::Lite;
 use vars qw($VERSION);
 use strict qw(vars);
 
-$VERSION = "0.2.1";
+$VERSION = "0.2.4";
 my $CRLF = "\r\n";
 
 # Required modules for Network I/O
@@ -48,7 +54,8 @@ sub initialize
 {
   my $self = shift;
   foreach my $var ("body", "request", "content", "status", "proxy",
-    "resp-protocol", "error-message", "response", "resp-headers")
+    "proxyport", "resp-protocol", "error-message", "response", 
+    "resp-headers")
   {
     $self->{$var} = undef;
   }
@@ -80,7 +87,7 @@ sub request
 
   # Parse URL 
   my ($protocol,$host,$junk,$port,$object) = 
-    $url =~ m{^(\S+)://([^/:]*)(:(\d+))?(/.*)$};
+    $url =~ m{^([^:/]+)://([^/:]*)(:(\d+))?(/.*)$};
 
   # Only HTTP is supported here
   if ($protocol ne "http")
@@ -98,6 +105,8 @@ sub request
 
   my $connecthost = $self->{'proxy'} || $host;
   $connecthost = $connecthost ? $connecthost : $host;
+  my $connectport = $self->{'proxyport'} || $port;
+  $connectport = $connectport ? $connectport : $port;
   my $addr = inet_aton($connecthost) || return undef;
   if ($connecthost ne $host)
   {
@@ -105,7 +114,7 @@ sub request
     $object = "$url";
   }
 
-  my $sin = sockaddr_in($port,$addr);
+  my $sin = sockaddr_in($connectport,$addr);
   connect($fh, $sin) || return undef;
   # Set nonblocking IO on the handle to allow timeouts
   fcntl($fh, F_SETFL, O_NONBLOCK);
@@ -309,8 +318,13 @@ sub proxy
   # Parse URL 
   my ($protocol,$host,$junk,$port,$object) = 
     $value =~ m{^(\S+)://([^/:]*)(:(\d+))?(/.*)$};
+  if (!$host)
+  {
+    ($host,$port) = $value =~ /^([^:]+):(.*)$/;
+  }
 
   $self->{'proxy'} = $host || $value;
+  $self->{'proxyport'} = $port || 80;
 }
 
 sub headers_array
