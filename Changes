@@ -3,3 +3,7 @@ Revision history for Perl extension HTTP::Lite.
 0.01  Sun Aug 27 21:51:45 2000
 	- original version; created by h2xs 1.1.1.2
 
+0.03  Sat Sep  9 14:05:00 2000
+        - fixed two minor bugs as found and reported by "Marcus I. Ryan"
+<shad@cce-7.cce.iastate.edu>.  See Lite.pm for details.
+

@@ -2,9 +2,29 @@
 #
 # HTTP::Lite.pm
 #
-# $Id: Lite.pm,v 1.1 2000/08/28 02:43:57 rhooper Exp rhooper $
+# $Id: Lite.pm,v 1.3 2000/09/09 18:06:55 rhooper Exp rhooper $
 #
 # $Log: Lite.pm,v $
+# Revision 1.3  2000/09/09 18:06:55  rhooper
+#
+# Corrected two minor bugs, as reported by 
+# Marcus I. Ryan, shad@cce-7.cce.iastate.edu:
+#   (1) When I went to compile it with PERL version 5.005_02 built for
+# i386-linux-thread it gave me an error about being short an argument in
+# syswrite, so line 287 I changed from
+#   syswrite($fh, $line);
+# to
+#   syswrite($fh, $line, length($line));
+#
+# (2) When I used it to get images they wouldn't come out right until I changed
+# line 142 from
+#     if ($_ =~ /^[\r\n]*$/)
+# to
+#     if ($_ =~ /^[\r\n]*$/ and $headmode)
+#
+# Revision 1.2  2000/08/28 02:46:05  rhooper
+# *** empty log message ***
+#
 # Revision 1.1  2000/08/28 02:43:57  rhooper
 # Initial revision
 #
@@ -15,7 +35,7 @@ package HTTP::Lite;
 use vars qw($VERSION);
 use strict qw(vars);
 
-$VERSION = "0.02";
+$VERSION = "0.03";
 
 # Required modules for Network I/O
 use Socket 1.3;
@@ -139,7 +159,7 @@ sub request
       next;
     } 
     $self->{response} .= $_;
-    if ($_ =~ /^[\r\n]*$/)
+    if ($_ =~ /^[\r\n]*$/ && $headmode)
     {
       $headmode = 0;
       next;
@@ -284,7 +304,7 @@ sub prepare_post
 sub http_writeline
 {
   my ($fh,$line) = @_;
-  syswrite($fh, $line);
+  syswrite($fh, $line, length($line));
 }
 
 
