@@ -7,8 +7,18 @@ Revision history for Perl extension HTTP::Lite.
         - fixed two minor bugs as found and reported by "Marcus I. Ryan"
 	  <shad@cce-7.cce.iastate.edu>.  See Lite.pm for details.
 
-1.2.5 Thu Dec 21 13:09:00 2000
+0.2.5 Thu Dec 21 13:09:00 2000
 	- fixed minor bug with MIME type provided for posts to be
 	  x-www-form-urlencoded, as reported by 
 	  Tobias Kunze <Tobias.Kunze@horz.de>
 
+1.0.0 Tue Jan  8 19:42:00 2002
+	- Fixed bug where content-type was always set to only set it has not
+	  yet been set.
+	  Thanks to Rui Miguel Seabra <rms@multicert.com>
+	- Fixed bug where file descriptors were not being released by
+	  request()
+ 	  Thanks to Ross Snyder" <ross@newgrounds.com>
+	- Fixed a bug preventing the module from working with Win32.  The
+          side-effect is that timeouts do not work in Win32.
+	  Thanks to Andrew Brown <Andrew_Brown@adc.com>

@@ -33,7 +33,7 @@ package HTTP::Lite;
 use vars qw($VERSION);
 use strict qw(vars);
 
-$VERSION = "0.2.5";
+$VERSION = "1.0.0";
 my $CRLF = "\r\n";
 
 # Required modules for Network I/O
@@ -111,7 +111,11 @@ sub request
   $connecthost = $connecthost ? $connecthost : $host;
   my $connectport = $self->{'proxyport'} || $port;
   $connectport = $connectport ? $connectport : $port;
-  my $addr = inet_aton($connecthost) || return undef;
+  my $addr = inet_aton($connecthost);
+  if (!$addr) {
+    close($fh);
+    return undef;
+  }
   if ($connecthost ne $host)
   {
     # if proxy active, use full URL as object to request
@@ -121,7 +125,9 @@ sub request
   my $sin = sockaddr_in($connectport,$addr);
   connect($fh, $sin) || return undef;
   # Set nonblocking IO on the handle to allow timeouts
-  fcntl($fh, F_SETFL, O_NONBLOCK);
+  if ( $^O ne "MSWin32" ) {
+    fcntl($fh, F_SETFL, O_NONBLOCK);
+  }
 
   # Start the request (HTTP/1.1 mode)
   http_writeline($fh, "$method $object HTTP/1.1$CRLF");
@@ -252,6 +258,7 @@ sub request
       $self->{body}.=$_;
     }
   }
+  close($fh);
   return $self->{status};
 }
 
@@ -390,7 +397,9 @@ sub prepare_post
     }
   }
   $self->{content} = $body;
-  $self->{headers}{'Content-Type'} = "application/x-www-form-urlencoded";
+  $self->{headers}{'Content-Type'} = "application/x-www-form-urlencoded"
+    unless defined ($self->{headers}{'Content-Type'}) and 
+    $self->{headers}{'Content-Type'};
   $self->{method} = "POST";
 }
 
