@@ -32,7 +32,7 @@ Revision history for Perl extension HTTP::Lite.
  	  test files.
 
 
-2.1.0 Tue Jun 11 17:50:00 2002   MAJOR UPDATE
+2.1.0 Tue Jun 12 17:50:00 2002   MAJOR UPDATE
 	- Added a callback hook to request() to allow handling of very large
           files and to allow filtering of content.
 	- Rewrote significant parts of the code to use references instead
@@ -47,3 +47,8 @@ Revision history for Perl extension HTTP::Lite.
 	- Singnificant speedup of data transfer code
 	- Changed filehandle names to be $url.time()
 	- Eliminated all -w warnings
+
+2.1.1 Thu Jun 13 15:55:00 2002
+	- Documentation fix
+	- Compatibility fix for 5.005
+

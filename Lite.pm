@@ -2,7 +2,7 @@
 #
 # HTTP::Lite.pm
 #
-# $Id: Lite.pm,v 1.10 2002/06/13 04:55:52 rhooper Exp rhooper $
+# $Id: Lite.pm,v 1.11 2002/06/13 19:53:48 rhooper Exp rhooper $
 #
 
 package HTTP::Lite;
@@ -10,7 +10,7 @@ package HTTP::Lite;
 use vars qw($VERSION);
 use strict qw(vars);
 
-$VERSION = "2.1.0";
+$VERSION = "2.1.1";
 my $BLOCKSIZE = 65536;
 my $CRLF = "\r\n";
 
@@ -79,7 +79,7 @@ sub request
   
   my $method = $self->{method};
   if (defined($cbargs)) {
-    my $self->{CBARGS} = $cbargs;
+    $self->{CBARGS} = $cbargs;
   }
 
   # Parse URL 
@@ -609,26 +609,31 @@ HTTP::Lite - Lightweight HTTP implementation
 
 =head1 DESCRIPTION
 
-    HTTP::Lite is a stand-alone lightweight HTTP/1.1
-    implementation for perl.  It is not intended to replace LWP,
-    but rather is intended for use in situations where it is
-    desirable to install the minimal number of modules to
-    achieve HTTP support, or where LWP is not a good candidate
-    due to CPU overhead, such as slower processors.
+    HTTP::Lite is a stand-alone lightweight HTTP/1.1 implementation
+    for perl.  It is not intended as a replacement for the
+    fully-features LWP module.  Instead, it is intended for use in
+    situations where it is desirable to install the minimal number of
+    modules to achieve HTTP support, or where LWP is not a good
+    candidate due to CPU overhead, such as slower processors.
+    HTTP::Lite is also significantly faster than LWP.
 
-    HTTP::Lite is ideal for CGI (or mod_perl) programs or for
-    bundling for redistribution with larger packages where only
-    HTTP GET and POST functionality are necessary.
+    HTTP::Lite is ideal for CGI (or mod_perl) programs or for bundling
+    for redistribution with larger packages where only HTTP GET and
+    POST functionality are necessary.
 
-    HTTP::Lite supports basic POST and GET operations only.  As
-    of 0.2.1, HTTP::Lite supports HTTP/1.1 and is compliant with
-    the Host header, necessary for name based virtual hosting. 
-    Additionally, HTTP::Live now supports Proxies.
+    HTTP::Lite supports basic POST and GET operations only.  As of
+    0.2.1, HTTP::Lite supports HTTP/1.1 and is compliant with the Host
+    header, necessary for name based virtual hosting.  Additionally,
+    HTTP::Lite now supports Proxies.
 
-    If you require more functionality, such as FTP or HTTPS,
-    please see libwwwperl (LWP).  LWP is a significantly better
-    and more comprehensive package than HTTP::Lite, and should
-    be used instead of HTTP::Lite whenever possible.
+    As of 2.0.0 HTTP::Lite now supports a callback to allow processing
+    of request data as it arrives.  This is useful for handling very
+    large files without consuming memory.
+
+    If you require more functionality, such as FTP or HTTPS, please
+    see libwwwperl (LWP).  LWP is a significantly better and more
+    comprehensive package than HTTP::Lite, and should be used instead
+    of HTTP::Lite whenever possible.
 
 =head1 CONSTRUCTOR
 
@@ -637,8 +642,7 @@ HTTP::Lite - Lightweight HTTP implementation
 =item new
 
 This is the constructor for HTTP::Lite.  It presently takes no
-arguments.  A future version of HTTP::Lite might accept
-parameters.
+arguments.  A future version of HTTP::Lite might accept parameters.
 
 =back
 
@@ -646,10 +650,6 @@ parameters.
 
 =over 4
 
-=item http11_mode ( 0 | 1 )
-
-Turns on or off HTTP/1.1 support.  This is off by default due to broken
-HTTP/1.1 servers.  Use 1 to enable HTTP/1.1 support.
 
 =item request ( URL, CALLBACK, CBARGS )
 
@@ -660,16 +660,16 @@ status code will be returned.  200 series status codes represent
 success, 300 represent temporary errors, 400 represent permanent
 errors, and 500 represent server errors.
 
-See F<http://www.w3.org/Protocols/HTTP/HTRESP.html> for detailled 
+See F<http://www.w3.org/Protocols/HTTP/HTRESP.html> for detailled
 information about HTTP status codes.
 
 The CALLBACK parameter, if used, is a way to filter the data as it is
 received or to handle very large transfers.  It must be a function
 reference, and will be passed: a reference to the instance of the http
-request making the callback, a reference to the current block of data about
-to be added to the body, and the CBARGS parameter (which may be anything). 
-It must return either a reference to the data to add to the body of the
-document, or undef.
+request making the callback, a reference to the current block of data
+about to be added to the body, and the CBARGS parameter (which may be
+anything).  It must return either a reference to the data to add to
+the body of the document, or undef.
 
 An example use to save a document to file is:
 
@@ -686,17 +686,26 @@ An example use to save a document to file is:
   close OUT;
 
 
-=item prepare_post
+=item prepare_post ( $hashref )
+
+Takes a reference to a hashed array of post form variables to upload. 
+Create the HTTP body and sets the method to POST.
+
+=item http11_mode ( 0 | 1 )
+
+Turns on or off HTTP/1.1 support.  This is off by default due to
+broken HTTP/1.1 servers.  Use 1 to enable HTTP/1.1 support.
 
 =item add_req_header ( $header, $value )
+
 =item get_req_header ( $header )
+
 =item delete_req_header ( $header )
 
-Add, Delete, or a HTTP header(s) for the request.  These
-functions allow you to override any header.  Presently, Host,
-User-Agent, Content-Type, Accept, and Connection are pre-defined
-by the HTTP::Lite module.  You may not override Host,
-Connection, or Accept.
+Add, Delete, or a HTTP header(s) for the request.  These functions
+allow you to override any header.  Presently, Host, User-Agent,
+Content-Type, Accept, and Connection are pre-defined by the HTTP::Lite
+module.  You may not override Host, Connection, or Accept.
 
 To provide (proxy) authentication or authorization, you would use:
 
@@ -811,11 +820,6 @@ otherwise the results are undefined.
     when transferring files.  HTTP/1.1 mode is now disabled by
     default.
 
-=head1 ACKNOWLEDGEMENTS
-
-	Marcus I. Ryan	shad@cce-7.cce.iastate.edu
-	michael.kloss@de.adp.com
-
 =head1 AUTHOR
 
 Roy Hooper <rhooper@thetoybox.org>
@@ -827,7 +831,7 @@ RFC 2068 - HTTP/1.1 -http://www.w3.org/
 
 =head1 COPYRIGHT
 
-Copyright (c) 2000 Roy Hooper.  All rights reserved.
+Copyright (c) 2000-2002 Roy Hooper.  All rights reserved.
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.
