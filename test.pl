@@ -1,19 +1,8 @@
-
+#!/usr/bin/perl
+#
 # HTTP::Lite - test.pl
 #
-# $Id: test.pl,v 1.3 2002/06/12 19:43:49 rhooper Exp rhooper $
-#
-# $Log: test.pl,v $
-# Revision 1.3  2002/06/12 19:43:49  rhooper
-# Made default protocol HTTP/1.0 and added http11_mode() method
-# Added new tests
-#
-# Revision 1.2  2000/09/29 03:50:59  rhooper
-# Test code significantly changed to query for a server to use and for a
-# proxy server to test.
-#
-# Data is validated for every request.
-#
+# $Id: test.pl,v 1.5 2002/06/13 04:56:30 rhooper Exp rhooper $
 #
 
 # Before `make install' is performed this script should be runnable with
@@ -26,9 +15,10 @@
 
 BEGIN { $| = 1; print "1..27\n"; }
 END {print "not ok 1\n" unless $loaded;}
-use HTTP::Lite;
+use lib ".";
 use Lite;
 $loaded = 1;
+
 
 print "ok 1\n";
 
@@ -86,6 +76,9 @@ if ($proxy =~ /\s*'*none'*\s*/)
 
 $http = new HTTP::Lite;
 
+#$http->{DEBUG} = 1;
+
+
 $http->http11_mode(1);
 
 print "\n\n";
@@ -94,22 +87,25 @@ $testno = 2;
 if (!$skip)
 {
 
-$res = $http->request("$testpath/test.txt");
+$url = "$testpath/test.txt";
+$res = $http->request($url);
 print "not " if !defined($res);
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
 $doc = $http->body;
 print "not " if $doc ne "OK\n";
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
 
 $http->reset;
-$res = $http->request("http://invalidhost.thetoybox.org/");
+$url = "http://invalidhost.thetoybox.org/";
+$res = $http->request($url);
 print "not " if defined($res);
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
 
 $http->reset;
-$res = $http->request("http://localhost:99999/");
+$url = "http://localhost:99999/";
+$res = $http->request($url);
 print "not " if defined($res);
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
 
 $http->reset;
 %vars = (
@@ -117,66 +113,75 @@ $http->reset;
          "b" => "hello world&",
         );
 $http->prepare_post(\%vars);
-$res = $http->request("$testpath/post.cgi");
+$url = "$testpath/post.cgi";
+$res = $http->request($url);
 print "not " if !defined($res);
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
 $doc = $http->body;
 print "not " if $doc ne "a=abc\nb=hello world&\n";
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
 
 $http->reset;
-$res = $http->request("$testpath/chunked.cgi");
+$url = "$testpath/chunked.cgi";
+$res = $http->request($url);
 $doc = $http->body;
 print "not " if length($doc) != 28;
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
 print "not " if $doc ne "chunk1\nchunk2\nchunk3\nchunk4\n";
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
 
 $http->reset;
-$res = $http->request("$testpath/chunked2.cgi");
+$url = "$testpath/chunked2.cgi";
+$res = $http->request($url);
 $doc = $http->body;
 print "not " if length($doc) != 26;
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
 print "not " if $doc ne "chunk1\nchunk2\nchunk3chunk4";
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
 
 $http->reset;
-$res = $http->request("$testpath/chunked3.cgi");
+$url = "$testpath/chunked3.cgi";
+$res = $http->request($url);
 $doc = $http->body;
 print "length not " if length($doc) != 34;
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
 print "not " if $doc ne "chunk1\nchunk2\nchunk3chunk4chunk5\n\n";
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
 
 $http->reset;
-$res = $http->request("$testpath/unchunked.html");
+$url = "$testpath/unchunked.html";
+$res = $http->request($url);
 $doc = $http->body;
 print "not " if length($doc) != 33;
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
 print "not " if $doc ne "unchunked1\nunchunked2\nunchunked3\n";
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
 
 $http->reset;
-$res = $http->request("$testpath/nonl.html");
+$url = "$testpath/nonl.html";
+$res = $http->request($url);
 $doc = $http->body;
 print "not " if length($doc) != 17;
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
 print "not " if $doc ne "line1\nline2\nline3";
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
 
 $http->http11_mode(0);
 $http->reset;
-$res = $http->request("$testpath/nle.html");
+$url = "$testpath/nle.html";
+$res = $http->request($url);
 $doc = $http->body;
 print "not " if length($doc) != 19;
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
 print "not " if $doc ne "line1\nline2\nline3\n\n";
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
 $http->reset;
-$res = $http->request("$testpath/bigbinary.dat");
+$url = "$testpath/bigbinary.dat";
+$res = $http->request($url);
 $bin = $http->body;
 $http->reset;
-$res = $http->request("$testpath/bigbinary.dat.md5");
+$url = "$testpath/bigbinary.dat.md5";
+$res = $http->request($url);
 chomp($binsum = $http->body);
 eval "use Digest::MD5 qw(md5_hex);";
 if ($@) {
@@ -184,23 +189,26 @@ if ($@) {
 } else {
   $sum = md5_hex($bin);
   print "not " if $binsum ne $sum;
-  print "ok $testno\n"; 
+  print "ok $testno $url\n"; 
 }
 $testno++;
 
 $http->http11_mode(1);
 $http->reset;
-$res = $http->request("$testpath/nle.html");
+$url = "$testpath/nle.html";
+$res = $http->request($url);
 $doc = $http->body;
 print "not " if length($doc) != 19;
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
 print "not " if $doc ne "line1\nline2\nline3\n\n";
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
 $http->reset;
-$res = $http->request("$testpath/bigbinary.dat");
+$url = "$testpath/bigbinary.dat";
+$res = $http->request($url);
 $bin = $http->body;
 $http->reset;
-$res = $http->request("$testpath/bigbinary.dat.md5");
+$url = "$testpath/bigbinary.dat.md5";
+$res = $http->request($url);
 chomp($binsum = $http->body);
 eval "use Digest::MD5 qw(md5_hex);";
 if ($@) {
@@ -208,25 +216,58 @@ if ($@) {
 } else {
   $sum = md5_hex($bin);
   print "not " if $binsum ne $sum;
-  print "ok $testno\n"; 
+  print "ok $testno $url\n"; 
 }
 $testno++;
 
 $http->reset;
-$res = $http->request("$testpath/bigtest.txt");
+$url = "$testpath/bigtest.txt";
+$res = $http->request($url);
 $bigtest = $http->body;
 
 $http->reset;
-$res = $http->request("$testpath/chunked4.cgi");
+$url = "$testpath/chunked4.cgi";
+$res = $http->request($url);
 $doc = $http->body;
 print "not " if $doc ne "$bigtest$bigtest${bigtest}chunk4chunk5\n";
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
 
 $http->reset;
-$res = $http->request("$testpath/chunked5.cgi");
+$url = "$testpath/chunked5.cgi";
+$res = $http->request($url);
 $doc = $http->body;
 print "not " if $doc ne "$bigtest$bin${bigtest}chunk4chunk5\n";
-print "ok $testno\n"; $testno++;
+print "ok $testno $url\n"; $testno++;
+
+# Callback test #1 - Unmodified callback
+sub callback1 {
+  my ($self,$dataref,$cbargs) = @_;
+  $cbbytes+=length($$dataref);
+  return $dataref;
+}
+
+$http->reset;
+$url = "$testpath/bigbinary.dat";
+$res = $http->request($url, \&callback1);
+$doc = $http->body;
+print "not " if $doc ne $bin;
+print "ok $testno $url\n"; $testno++;
+print "not " if length($bin) != $cbbytes;
+print "ok $testno $url\n"; $testno++;
+
+# Callback test #2 - Discard
+sub callback2 {
+  my ($self,$dataref,$cbargs) = @_;
+  $cbbytes+=length($$dataref);
+  return undef;
+}
+
+$http->reset;
+$url = "$testpath/bigbinary.dat";
+$res = $http->request($url, \&callback2);
+$doc = $http->body;
+print "not " if defined($doc);
+print "ok $testno $url\n"; $testno++;
 
 
 } else {
@@ -241,12 +282,13 @@ unless ($skip || $skipproxy)
 {
   $http->reset;
   $http->proxy($proxy);
-  $res = $http->request("$testpath/test.txt");
+  $url = "$testpath/test.txt";
+  $res = $http->request($url);
   $doc = $http->body;
   print "not " if length($doc) != 3;
-  print "ok $testno\n"; $testno++;
+  print "ok $testno $url\n"; $testno++;
   print "not " if $doc ne "OK\n";
-  print "ok $testno\n"; $testno++;
+  print "ok $testno $url\n"; $testno++;
 } else {
   print "ok $testno (skipping test on this platform)\n";
   $testno++;

@@ -2,36 +2,7 @@
 #
 # HTTP::Lite.pm
 #
-# $Id: Lite.pm,v 1.9 2002/06/12 19:43:21 rhooper Exp rhooper $
-#
-# $Log: Lite.pm,v $
-# Revision 1.9  2002/06/12 19:43:21  rhooper
-# Made default protocol HTTP/1.0 and added http11_mode() method
-#
-# Revision 1.8  2002/01/09 00:56:59  rhooper
-# *** empty log message ***
-#
-# Revision 1.7  2000/12/21 18:05:09  rhooper
-# FIxed post form MIME-Type -- was application/x-www-urlencoded should
-# have been x-www-form-urlencoded.
-#
-# Revision 1.6  2000/11/02 01:47:58  rhooper
-# Fixed a greedy regular expression in the URL decoder.  URLs with :// embedded now work.
-#
-# Revision 1.5  2000/10/31 01:27:03  rhooper
-# added proxy port support.
-#
-# Revision 1.4  2000/09/29 03:47:53  rhooper
-# Requests without a terminating CR or LF are now properly handled.
-# HTTP/1.1 chunked mode transfers are now supported
-# Host: headers are properly added to all requests
-# Proxy support has been added
-# Significant test code updates
-#
-# Revision 1.3  2000/09/09 18:06:55  rhooper
-# Revision 1.2  2000/08/28 02:46:05  rhooper
-# Revision 1.1  2000/08/28 02:43:57  rhooper
-# Initial revision
+# $Id: Lite.pm,v 1.10 2002/06/13 04:55:52 rhooper Exp rhooper $
 #
 
 package HTTP::Lite;
@@ -39,7 +10,8 @@ package HTTP::Lite;
 use vars qw($VERSION);
 use strict qw(vars);
 
-$VERSION = "1.0.2";
+$VERSION = "2.1.0";
+my $BLOCKSIZE = 65536;
 my $CRLF = "\r\n";
 
 # Required modules for Network I/O
@@ -51,6 +23,8 @@ use Errno qw(EAGAIN);
 sub prepare_post;
 sub http_writeline;
 sub http_readline;
+sub http_read;
+sub http_readbytes;
 
 sub new 
 {
@@ -63,25 +37,32 @@ sub new
 sub initialize
 {
   my $self = shift;
-  foreach my $var ("body", "request", "content", "status", "proxy",
-    "proxyport", "resp-protocol", "error-message", "response", 
-    "resp-headers")
-  {
-    $self->{$var} = undef;
-  }
-  $self->{method} = "GET";
+  $self->reset;
   $self->{timeout} = 120;
-  $self->{headers} = { 'User-Agent' => "HTTP::Lite/$VERSION" };
-  $self->{HTTPReadBuffer} = "";
   $self->{HTTP11} = 0;
+  $self->{DEBUG} = 0;
+}
+
+sub DEBUG
+{
+  my $self = shift;
+  if ($self->{DEBUG}) {
+    print STDERR join(" ", @_),"\n";
+  }
 }
 
 sub reset
 {
   my $self = shift;
-  my $oldproto = $self->{HTTP11};
-  $self->initialize;
-  $self->{HTTP11} = $oldproto;
+  foreach my $var ("body", "request", "content", "status", "proxy",
+    "proxyport", "resp-protocol", "error-message",  
+    "resp-headers", "CBARGS")
+  {
+    $self->{$var} = undef;
+  }
+  $self->{HTTPReadBuffer} = "";
+  $self->{method} = "GET";
+  $self->{headers} = { 'User-Agent' => "HTTP::Lite/$VERSION" };
 }
 
 
@@ -94,9 +75,12 @@ sub escape {
 
 sub request
 {
-  my ($self, $url) = @_;
+  my ($self, $url, $data_callback, $cbargs) = @_;
   
   my $method = $self->{method};
+  if (defined($cbargs)) {
+    my $self->{CBARGS} = $cbargs;
+  }
 
   # Parse URL 
   my ($protocol,$host,$junk,$port,$object) = 
@@ -111,7 +95,7 @@ sub request
   
   # Setup the connection
   my $proto = getprotobyname('tcp');
-  my $fhname = $url . localtime;
+  my $fhname = $url . time();
   my $fh = *$fhname;
   socket($fh, PF_INET, SOCK_STREAM, $proto);
   $port = 80 if !$port;
@@ -173,57 +157,70 @@ sub request
   
   # Read response from server
   my $headmode=1;
-  my $chunkmode=undef;
+  my $chunkmode=0;
   my $chunksize=0;
   my $chunklength=0;
   my $chunk;
   my $line = 0;
-  while ($_ = $self->http_readline($fh))
+  my $data;
+  while ($data = $self->http_read($fh,$headmode,$chunkmode,$chunksize))
   {
-    #print STDERR ">>>DEBUG>>> reading: $chunkmode, $chunksize, $chunklength, $headmode, ".
-    	length($self->{body})."\n"; #.": //$_//\n";
+    $self->{DEBUG} && $self->DEBUG("reading: $chunkmode, $chunksize, $chunklength, $headmode, ".
+        length($self->{'body'}));
+    if ($self->{DEBUG}) {
+      foreach my $var ("body", "request", "content", "status", "proxy",
+        "proxyport", "resp-protocol", "error-message", 
+        "resp-headers", "CBARGS", "HTTPReadBuffer") 
+      {
+        $self->DEBUG("state $var ".length($self->{$var}));
+      }
+    }
     $line++;
     if ($line == 1)
     {
-      my ($proto,$status,$message) = split(' ', $_, 3);
+      my ($proto,$status,$message) = split(' ', $$data, 3);
+      $self->{DEBUG} && $self->DEBUG("header $$data");
       $self->{status}=$status;
       $self->{'resp-protocol'}=$proto;
       $self->{'error-message'}=$message;
       next;
     } 
-    $self->{response} .= $_;
-    if ($_ =~ /^[\r\n]*$/ && ($headmode || $chunkmode eq "entity-header"))
+    if (($headmode || $chunkmode eq "entity-header") && $$data =~ /^[\r\n]*$/)
     {
       if ($chunkmode)
       {
-        undef $chunkmode;
+        $chunkmode = 0;
       }
       $headmode = 0;
       
       # Check for Transfer-Encoding
-      my $header = join(' ',@{$self->get_header("Transfer-Encoding")});
-      if ($header =~ /chunked/i)
-      {
-        $chunkmode = "chunksize";
+      my $te = $self->get_header("Transfer-Encoding");
+      if (defined($te)) {
+        my $header = join(' ',@{$te});
+        if ($header =~ /chunked/i)
+        {
+          $chunkmode = "chunksize";
+        }
       }
       next;
     }
     if ($headmode || $chunkmode eq "entity-header")
     {
-      my ($var,$data) = $_ =~ /^([^:]*):\s*(.*)$/;
+      my ($var,$datastr) = $$data =~ /^([^:]*):\s*(.*)$/;
       if (defined($var))
       {
-        $data =~s/[\r\n]$//g;
+	$datastr =~s/[\r\n]$//g;
         $var = lc($var);
-        $var =~ s/^(.)|(-.)/&upper($1,$2)/ge;
+        $var =~ s/^(.)/&upper($1)/ge;
+        $var =~ s/(-.)/&upper($1)/ge;
         my $hr = ${$self->{'resp-headers'}}{$var};
         if (!ref($hr))
         {
-          $hr = [ $data ];
+          $hr = [ $datastr ];
         }
         else 
         {
-          push @{ $hr }, $data;
+          push @{ $hr }, $datastr;
         }
         ${$self->{'resp-headers'}}{$var} = $hr;
       }
@@ -231,23 +228,31 @@ sub request
     {
       if ($chunkmode eq "chunksize")
       {
-        $chunksize = $_;
+        $chunksize = $$data;
         $chunksize =~ s/^\s*|;.*$//g;
         $chunksize =~ s/\s*$//g;
         my $cshx = $chunksize;
-        $chunksize = hex($chunksize);
-        #print STDERR ">>>DEBUG>>>chunksize was $chunksize (HEX was $cshx)\n";
-        if ($chunksize == 0)
-        {
-          $chunkmode = "entity-header";
+        if (length($chunksize) > 0) {
+          # read another line
+          if ($chunksize !~ /^[a-f0-9]+$/i) {
+            $self->{DEBUG} && $self->DEBUG("chunksize not a hex string");
+          }
+          $chunksize = hex($chunksize);
+          $self->{DEBUG} && $self->DEBUG("chunksize was $chunksize (HEX was $cshx)");
+          if ($chunksize == 0)
+          {
+            $chunkmode = "entity-header";
+          } else {
+            $chunkmode = "chunk";
+            $chunklength = 0;
+          }
         } else {
-          $chunkmode = "chunk";
-          $chunklength = 0;
+          $self->{DEBUG} && $self->DEBUG("chunksize empty string, checking next line!");
         }
       } elsif ($chunkmode eq "chunk")
       {
-        $chunk .= $_;
-        $chunklength += length($_);
+        $chunk .= $$data;
+        $chunklength += length($$data);
         if ($chunklength >= $chunksize)
         {
           $chunkmode = "chunksize";
@@ -260,7 +265,7 @@ sub request
             # chunk data is exactly chunksize -- need CRLF still
             $chunkmode = "ignorecrlf";
           }
-          $self->{'body'} .= $chunk;
+          $self->add_to_body(\$chunk, $data_callback);
           $chunk="";
           $chunklength = 0;
           $chunksize = "";
@@ -270,11 +275,33 @@ sub request
         $chunkmode = "chunksize";
       }
     } else {
-      $self->{body}.=$_;
+      $self->add_to_body($data, $data_callback);
     }
   }
   close($fh);
   return $self->{status};
+}
+
+sub add_to_body
+{
+  my $self = shift;
+  my ($dataref, $data_callback) = @_;
+  
+  if (!defined($data_callback)) {
+    $self->{DEBUG} && $self->DEBUG("no callback");
+    $self->{'body'}.=$$dataref;
+  } else {
+    my $newdata = &$data_callback($self, $dataref, $self->{CBARGS});
+    if ($self->{DEBUG}) {
+      $self->DEBUG("callback got back a ".ref($newdata));
+      if (ref($newdata) eq "SCALAR") {
+        $self->DEBUG("callback got back ".length($$newdata)." bytes");
+      }
+    }
+    if (defined($newdata) && ref($newdata) eq "SCALAR") {
+      $self->{'body'} .= $$newdata;
+    }
+  }
 }
 
 sub add_req_header
@@ -282,6 +309,7 @@ sub add_req_header
   my $self = shift;
   my ($header, $value) = @_;
   
+  $self->{DEBUG} && $self->DEBUG("add_req_header $header $value");
   ${$self->{headers}}{$header} = $value;
 }
 
@@ -309,13 +337,7 @@ sub delete_req_header
 sub body
 {
   my $self = shift;
-  return $self->{body};
-}
-
-sub response
-{
-  my $self = shift;
-  return $self->{response};
+  return $self->{'body'};
 }
 
 sub status
@@ -431,11 +453,41 @@ sub http_writeline
   syswrite($fh, $line, length($line));
 }
 
+
+sub http_read
+{
+  my $self = shift;
+  my ($fh,$headmode,$chunkmode,$chunksize) = @_;
+
+  $self->{DEBUG} && $self->DEBUG("read handle=$fh, headm=$headmode, chunkm=$chunkmode, chunksize=$chunksize");
+
+  my $res;
+  if (($headmode == 0 && $chunkmode eq "0") || ($chunkmode eq "chunk")) {
+    my $bytes_to_read = $chunkmode eq "chunk" ?
+	($chunksize < $BLOCKSIZE ? $chunksize : $BLOCKSIZE) :
+	$BLOCKSIZE;
+    $res = $self->http_readbytes($fh,$self->{timeout},$bytes_to_read);
+  } else { 
+    $res = $self->http_readline($fh,$self->{timeout});  
+  }
+  if ($res) {
+    if ($self->{DEBUG}) {
+      $self->DEBUG("read got ".length($$res)." bytes");
+      my $str = $$res;
+      $str =~ s{([\x00-\x1F\x7F-\xFF])}{.}g;
+      $self->DEBUG("read: ".$str);
+    }
+  }
+  return $res;
+}
+
 sub http_readline
 {
   my $self = shift;
   my ($fh, $timeout) = @_;
   my $EOL = "\n";
+
+  $self->{DEBUG} && $self->DEBUG("readline handle=$fh, timeout=$timeout");
   
   # is there a line in the buffer yet?
   while ($self->{HTTPReadBuffer} !~ /$EOL/)
@@ -450,7 +502,8 @@ sub http_readline
       return undef;
     } else {
       # Get the data
-      $chars = sysread($fh, $inbuf, 256);
+      $chars = sysread($fh, $inbuf, $BLOCKSIZE);
+      $self->{DEBUG} && $self->DEBUG("sysread $chars bytes");
     }
     # End of stream?
     if ($chars <= 0 && !$!{EAGAIN})
@@ -474,13 +527,66 @@ sub http_readline
   }
   # and update the buffer
   $self->{HTTPReadBuffer}=$oldline;
-  # Put the linefeed back on the line and return it
-  return $newline;
+  return length($newline) ? \$newline : 0;
+}
+
+sub http_readbytes
+{
+  my $self = shift;
+  my ($fh, $timeout, $bytes) = @_;
+  my $EOL = "\n";
+
+  $self->{DEBUG} && $self->DEBUG("readbytes handle=$fh, timeout=$timeout, bytes=$bytes");
+  
+  # is there enough data in the buffer yet?
+  while (length($self->{HTTPReadBuffer}) < $bytes)
+  {
+    # nope -- wait for incoming data
+    my ($inbuf,$bits,$chars) = ("","",0);
+    vec($bits,fileno($fh),1)=1;
+    my $nfound = select($bits, undef, $bits, $timeout);
+    if ($nfound == 0)
+    {
+      # Timed out
+      return undef;
+    } else {
+      # Get the data
+      $chars = sysread($fh, $inbuf, $BLOCKSIZE);
+      $self->{DEBUG} && $self->DEBUG("sysread $chars bytes");
+    }
+    # End of stream?
+    if ($chars <= 0 && !$!{EAGAIN})
+    {
+      last;
+    }
+    # tag data onto end of buffer
+    $self->{HTTPReadBuffer}.=$inbuf;
+  }
+  my $newline;
+  my $buflen;
+  if (($buflen=length($self->{HTTPReadBuffer})) >= $bytes)
+  {
+    $newline = substr($self->{HTTPReadBuffer},0,$bytes+1);
+    if ($bytes+1 < $buflen) {
+      $self->{HTTPReadBuffer} = substr($self->{HTTPReadBuffer},$bytes+1);
+    } else {
+      $self->{HTTPReadBuffer} = "";
+    }
+  } else {
+    $newline = substr($self->{HTTPReadBuffer},0);
+    $self->{HTTPReadBuffer} = "";
+  }
+  return length($newline) ? \$newline : 0;
 }
 
 sub upper
 {
-  return uc(join("",@_));
+  my ($str) = @_;
+  if (defined($str)) {
+    return uc($str);
+  } else {
+    return undef;
+  }
 }
 
 1;
@@ -545,7 +651,7 @@ parameters.
 Turns on or off HTTP/1.1 support.  This is off by default due to broken
 HTTP/1.1 servers.  Use 1 to enable HTTP/1.1 support.
 
-=item request ( URL )
+=item request ( URL, CALLBACK, CBARGS )
 
 Initiates a request to the specified URL.
 
@@ -556,6 +662,29 @@ errors, and 500 represent server errors.
 
 See F<http://www.w3.org/Protocols/HTTP/HTRESP.html> for detailled 
 information about HTTP status codes.
+
+The CALLBACK parameter, if used, is a way to filter the data as it is
+received or to handle very large transfers.  It must be a function
+reference, and will be passed: a reference to the instance of the http
+request making the callback, a reference to the current block of data about
+to be added to the body, and the CBARGS parameter (which may be anything). 
+It must return either a reference to the data to add to the body of the
+document, or undef.
+
+An example use to save a document to file is:
+
+  # Write the data to the filehandle $cbargs
+  sub savetofile {
+    my ($self,$dataref,$cbargs) = @_;
+    print $cbargs $$dataref;
+    return undef;
+  }
+
+  $url = "$testpath/bigbinary.dat";
+  open OUT, ">bigbinary.dat";
+  $res = $http->request($url, \&callback2, OUT);
+  close OUT;
+
 
 =item prepare_post
 
@@ -622,11 +751,6 @@ Returns the textual description of the status code as returned
 by the server.  The status string is not required to adhere to
 any particular format, although most HTTP servers use a standard
 set of descriptions.
-
-=item response
-
-Returns the entire unparsed HTTP response as returned by the
-server.
 
 =item reset
 
