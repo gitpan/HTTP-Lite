@@ -1,9 +1,13 @@
 
 # HTTP::Lite - test.pl
 #
-# $Id: test.pl,v 1.2 2000/09/29 03:50:59 rhooper Exp rhooper $
+# $Id: test.pl,v 1.3 2002/06/12 19:43:49 rhooper Exp rhooper $
 #
 # $Log: test.pl,v $
+# Revision 1.3  2002/06/12 19:43:49  rhooper
+# Made default protocol HTTP/1.0 and added http11_mode() method
+# Added new tests
+#
 # Revision 1.2  2000/09/29 03:50:59  rhooper
 # Test code significantly changed to query for a server to use and for a
 # proxy server to test.

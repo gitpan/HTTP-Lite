@@ -2,9 +2,12 @@
 #
 # HTTP::Lite.pm
 #
-# $Id: Lite.pm,v 1.8 2002/01/09 00:56:59 rhooper Exp rhooper $
+# $Id: Lite.pm,v 1.9 2002/06/12 19:43:21 rhooper Exp rhooper $
 #
 # $Log: Lite.pm,v $
+# Revision 1.9  2002/06/12 19:43:21  rhooper
+# Made default protocol HTTP/1.0 and added http11_mode() method
+#
 # Revision 1.8  2002/01/09 00:56:59  rhooper
 # *** empty log message ***
 #
@@ -36,7 +39,7 @@ package HTTP::Lite;
 use vars qw($VERSION);
 use strict qw(vars);
 
-$VERSION = "1.0.1";
+$VERSION = "1.0.2";
 my $CRLF = "\r\n";
 
 # Required modules for Network I/O

@@ -22,3 +22,13 @@ Revision history for Perl extension HTTP::Lite.
 	- Fixed a bug preventing the module from working with Win32.  The
           side-effect is that timeouts do not work in Win32.
 	  Thanks to Andrew Brown <Andrew_Brown@adc.com>
+
+1.0.1 Tue Jun 11 15:30:00 2002
+	- Changed default protocol to HTTP/1.0 and added a switch to
+	  activate HTTP/1.1 protocol.
+
+1.0.2 Tue Jun 11 15:30:00 2002
+	- Fixed a few errors in the distribution including missing
+ 	  test files.
+
+
