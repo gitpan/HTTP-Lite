@@ -269,6 +269,22 @@ $doc = $http->body;
 print "not " if defined($doc);
 print "ok $testno $url\n"; $testno++;
 
+# Callback test #3 - New callback syntax
+sub callback3 {
+  my ($self,$mode,$dataref,@args) = @_;
+  $cbbytes+=length($$dataref);
+#  print STDERR "callback for $mode data is $dataref args are @args\n";
+  return $dataref;
+}
+
+$http->reset;
+$url = "$testpath/bigbinary.dat";
+$http->set_callback(\&callback3, "arg1","arg2","arg3",["arg4"]);
+$res = $http->request($url);
+$doc = $http->body;
+print "not " if $doc ne $bin;
+print "ok $testno $url\n"; $testno++;
+
 
 } else {
   for ($n=$testno; $n < 20; $n++)

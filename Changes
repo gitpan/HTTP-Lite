@@ -52,3 +52,10 @@ Revision history for Perl extension HTTP::Lite.
 	- Documentation fix
 	- Compatibility fix for 5.005
 
+2.1.3 Mon Feb 10 16:15:00 2002
+	- Documentation fixes
+	- Fixed large write bug in http_write
+	- Documented callback system
+	- Added local_addr and local_port settings
+	- Added method setting to allow use of any request method (GET, PUT,
+	  POST, HEAD)

@@ -1,5 +1,9 @@
 #!/bin/sh
 
+# needed for solaris for echo -n to work right
+SYSV3=1
+export SYSV3
+
 echo Content-type: text/html
 echo
 echo chunk1

@@ -10,7 +10,7 @@ package HTTP::Lite;
 use vars qw($VERSION);
 use strict qw(vars);
 
-$VERSION = "2.1.1";
+$VERSION = "2.1.3";
 my $BLOCKSIZE = 65536;
 my $CRLF = "\r\n";
 
@@ -21,7 +21,7 @@ use Errno qw(EAGAIN);
 
 # Forward declarations
 sub prepare_post;
-sub http_writeline;
+sub http_write;
 sub http_readline;
 sub http_read;
 sub http_readbytes;
@@ -43,6 +43,36 @@ sub initialize
   $self->{DEBUG} = 0;
 }
 
+sub local_addr
+{
+  my $self = shift;
+  my $val = shift;
+  my $oldval = $self->{'local_addr'};
+  if (defined($val)) {
+    $self->{'local_addr'} = $val;
+  }
+  return $oldval;
+}
+
+sub local_port
+{
+  my $self = shift;
+  my $val = shift;
+  my $oldval = $self->{'local_port'};
+  if (defined($val)) {
+    $self->{'local_port'} = $val;
+   }
+  return $oldval;
+}
+
+sub method
+{
+  my $self=shift;
+  my $method = shift;
+  my $method = uc($method);
+  $self->{method} = $method;
+}
+
 sub DEBUG
 {
   my $self = shift;
@@ -56,7 +86,7 @@ sub reset
   my $self = shift;
   foreach my $var ("body", "request", "content", "status", "proxy",
     "proxyport", "resp-protocol", "error-message",  
-    "resp-headers", "CBARGS")
+    "resp-headers", "CBARGS", "callback_function", "callback_params")
   {
     $self->{$var} = undef;
   }
@@ -73,6 +103,12 @@ sub escape {
   return $toencode;
 }
 
+sub set_callback {
+  my ($self, $callback, @callbackparams) = @_;
+  $self->{'callback_function'} = $callback;
+  $self->{'callback_params'} = [ @callbackparams ];
+}
+
 sub request
 {
   my ($self, $url, $data_callback, $cbargs) = @_;
@@ -81,6 +117,9 @@ sub request
   if (defined($cbargs)) {
     $self->{CBARGS} = $cbargs;
   }
+
+  my $callback_func = $self->{'callback_function'};
+  my $callback_params = $self->{'callback_params'};
 
   # Parse URL 
   my ($protocol,$host,$junk,$port,$object) = 
@@ -115,6 +154,23 @@ sub request
     $object = "$url";
   }
 
+  # choose local port and address
+  my $local_addr = INADDR_ANY; 
+  my $local_port = "0";
+  if (defined($self->{'local_addr'})) {
+    $local_addr = $self->{'local_addr'};
+    if ($local_addr eq "0.0.0.0" || $local_addr eq "0") {
+      $local_addr = INADDR_ANY;
+    } else {
+      $local_addr = inet_aton($local_addr);
+    }
+  }
+  if (defined($self->{'local_port'})) {
+    $local_port = $self->{'local_port'};
+  }
+  my $paddr = pack_sockaddr_in($local_port, $local_addr); 
+  bind($fh, $paddr) || return undef;  # Failing to bind is fatal.
+
   my $sin = sockaddr_in($connectport,$addr);
   connect($fh, $sin) || return undef;
   # Set nonblocking IO on the handle to allow timeouts
@@ -122,39 +178,78 @@ sub request
     fcntl($fh, F_SETFL, O_NONBLOCK);
   }
 
+  if (defined($callback_func)) {
+    &$callback_func($self, "connect", undef, @$callback_params);
+  }  
+
   # Start the request (HTTP/1.1 mode)
   if ($self->{HTTP11}) {
-    http_writeline($fh, "$method $object HTTP/1.1$CRLF");
+    http_write($fh, "$method $object HTTP/1.1$CRLF");
   } else {
-    http_writeline($fh, "$method $object HTTP/1.0$CRLF");
+    http_write($fh, "$method $object HTTP/1.0$CRLF");
   }
 
   # Add some required headers
   # we only support a single transaction per request in this version.
   $self->add_req_header("Connection", "close");    
   $self->add_req_header("Host", $host);
-  $self->add_req_header("Accept", "*/*");
-    
-  # Output headers
-  my $headerref = $self->{headers};
-  foreach my $header (keys %$headerref)
-  {
-    http_writeline($fh, $header.": ".$$headerref{$header}."$CRLF");
+  if (!defined($self->get_req_header("Accept"))) {
+	  $self->add_req_header("Accept", "*/*");
   }
   
-  # Handle Content-type and Content-Length seperately
+  # Purge a couple others
+  $self->delete_req_header("Content-Type");
+  $self->delete_req_header("Content-Length");
+  
+  # Output headers
+  foreach my $header ($self->enum_req_headers())
+  {
+    my $value = $self->get_req_header($header);
+    http_write($fh, $header.": ".$value."$CRLF");
+  }
+  
+  my $content_length;
   if (defined($self->{content}))
   {
-    http_writeline($fh, "Content-Length: ".length($self->{content})."$CRLF");
+    $content_length = length($self->{content});
   }
-  http_writeline($fh, "$CRLF");
+  if (defined($callback_func)) {
+    my $ncontent_length = &$callback_func($self, "content-length", undef, @$callback_params);
+    if (defined($ncontent_length)) {
+      $content_length = $ncontent_length;
+    }
+  }  
+
+  if ($content_length) {
+    http_write($fh, "Content-Length: $content_length$CRLF");
+  }
+  
+  if (defined($callback_func)) {
+    &$callback_func($self, "done-headers", undef, @$callback_params);
+  }  
+  # End of headers
+  http_write($fh, "$CRLF");
+  
+  
+  my $content_out = 0;
+  if (defined($callback_func)) {
+    while (my $content = &$callback_func($self, "content", undef, @$callback_params)) {
+      http_write($fh, $content);
+      $content_out++;
+    }
+  } 
   
   # Output content, if any
-  if (defined($self->{content}))
+  if (!$content_out && defined($self->{content}))
   {
-    http_writeline($fh, $self->{content});
+    http_write($fh, $self->{content});
   }
   
+  if (defined($callback_func)) {
+    &$callback_func($self, "content-done", undef, @$callback_params);
+  }  
+
+
   # Read response from server
   my $headmode=1;
   my $chunkmode=0;
@@ -278,6 +373,9 @@ sub request
       $self->add_to_body($data, $data_callback);
     }
   }
+  if (defined($callback_func)) {
+    &$callback_func($self, "done", undef, @$callback_params);
+  }
   close($fh);
   return $self->{status};
 }
@@ -287,11 +385,19 @@ sub add_to_body
   my $self = shift;
   my ($dataref, $data_callback) = @_;
   
-  if (!defined($data_callback)) {
+  my $callback_func = $self->{'callback_function'};
+  my $callback_params = $self->{'callback_params'};
+
+  if (!defined($data_callback) && !defined($callback_func)) {
     $self->{DEBUG} && $self->DEBUG("no callback");
     $self->{'body'}.=$$dataref;
   } else {
-    my $newdata = &$data_callback($self, $dataref, $self->{CBARGS});
+    my $newdata;
+    if (defined($callback_func)) {
+      $newdata = &$callback_func($self, "data", $dataref, @$callback_params);
+    } else {
+      $newdata = &$data_callback($self, $dataref, $self->{CBARGS});
+    }
     if ($self->{DEBUG}) {
       $self->DEBUG("callback got back a ".ref($newdata));
       if (ref($newdata) eq "SCALAR") {
@@ -309,8 +415,10 @@ sub add_req_header
   my $self = shift;
   my ($header, $value) = @_;
   
+  my $lcheader = lc($header);
   $self->{DEBUG} && $self->DEBUG("add_req_header $header $value");
-  ${$self->{headers}}{$header} = $value;
+  ${$self->{headers}}{$lcheader} = $value;
+  ${$self->{headermap}}{$lcheader} = $header;
 }
 
 sub get_req_header
@@ -318,7 +426,7 @@ sub get_req_header
   my $self = shift;
   my ($header) = @_;
   
-  return $self->{headers}{$header};
+  return $self->{headers}{lc($header)};
 }
 
 sub delete_req_header
@@ -327,11 +435,21 @@ sub delete_req_header
   my ($header) = @_;
   
   my $exists;
-  if ($exists=defined(${$self->{headers}}{$header}))
+  if ($exists=defined(${$self->{headers}}{lc($header)}))
   {
-    delete ${$self->{headers}}{$header};
+    delete ${$self->{headers}}{lc($header)};
+    delete ${$self->{headermap}}{lc($header)};
   }
   return $exists;
+}
+
+sub enum_req_headers
+{
+  my $self = shift;
+  my ($header) = @_;
+  
+  my $exists;
+  return keys %{$self->{headermap}};
 }
 
 sub body
@@ -447,13 +565,18 @@ sub prepare_post
   $self->{method} = "POST";
 }
 
-sub http_writeline
+sub http_write
 {
   my ($fh,$line) = @_;
-  syswrite($fh, $line, length($line));
+
+  my $size = length($line);
+  my $bytes = syswrite($fh, $line, 4096, 0 );
+
+  while ( ($size - $bytes) > 0) {
+    $bytes += syswrite($fh, $line, 4096, $bytes );
+  }
 }
-
-
+ 
 sub http_read
 {
   my $self = shift;
@@ -651,7 +774,7 @@ arguments.  A future version of HTTP::Lite might accept parameters.
 =over 4
 
 
-=item request ( URL, CALLBACK, CBARGS )
+=item request ( $url, $data_callback, $cbargs )
 
 Initiates a request to the specified URL.
 
@@ -663,27 +786,66 @@ errors, and 500 represent server errors.
 See F<http://www.w3.org/Protocols/HTTP/HTRESP.html> for detailled
 information about HTTP status codes.
 
-The CALLBACK parameter, if used, is a way to filter the data as it is
-received or to handle very large transfers.  It must be a function
-reference, and will be passed: a reference to the instance of the http
-request making the callback, a reference to the current block of data
-about to be added to the body, and the CBARGS parameter (which may be
-anything).  It must return either a reference to the data to add to
-the body of the document, or undef.
+The $data_callback parameter, if used, is a way to filter the data as it is
+received or to handle large transfers.  It must be a function reference, and
+will be passed: a reference to the instance of the http request making the
+callback, a reference to the current block of data about to be added to the
+body, and the $cbargs parameter (which may be anything).  It must return
+either a reference to the data to add to the body of the document, or undef.
+
+If set_callback is used, $data_callback and $cbargs are not used.  $cbargs
+may be either a scalar or a reference.
+
+The data_callback is called as: 
+  &$data_callback( $self, $dataref, $cbargs )
 
 An example use to save a document to file is:
 
   # Write the data to the filehandle $cbargs
   sub savetofile {
-    my ($self,$dataref,$cbargs) = @_;
+    my ($self,$phase,$dataref,$cbargs) = @_;
     print $cbargs $$dataref;
     return undef;
   }
 
   $url = "$testpath/bigbinary.dat";
   open OUT, ">bigbinary.dat";
-  $res = $http->request($url, \&callback2, OUT);
+  $res = $http->request($url, \&savetofile, OUT);
   close OUT;
+
+=item set_callback ( $functionref, $dataref )
+
+At various stages of the request, callbacks may be used to modify the
+behaviour or to monitor the status of the request.  These work like the
+$data_callback parameter to request(), but are more verstaile.  Using
+set_callback disables $data_callback in request()
+
+The callbacks are called as: 
+  callback ( $self, $phase, $dataref, $cbargs )
+
+The current phases are:
+
+  connect - connection has been established and headers are being
+            transmitted.
+            
+  content-length - return value is used as the content-length.  If undef,
+            and prepare_post() was used, the content length is
+            calculated.
+                   
+  done-headers - all headers have been sent
+  
+  content - return value is used as content and is sent to client.  Return
+            undef to use the internal content defined by prepare_post().
+            
+  content-done - content has been successfuly transmitted.
+  
+  data - A block of data has been received.  The data is referenced by
+            $dataref.  The return value is dereferenced and replaces the
+            content passed in.  Return undef to avoid using memory for large
+            documents.
+
+  done - Request is done.
+
 
 
 =item prepare_post ( $hashref )
@@ -766,6 +928,22 @@ set of descriptions.
 You must call this prior to re-using an HTTP::Lite handle,
 otherwise the results are undefined.
 
+=item local_addr ( $ip )
+
+Explicity select the local IP address.  0.0.0.0 (default) lets the system
+choose.
+
+=item local_port ( $port )
+
+Explicity select the local port.  0 (default and reccomended) lets the
+system choose.
+
+=item method ( $method )
+
+Explicity set the method.  Using prepare_post or reset overrides this
+setting.  Usual choices are GET, POST, PUT, HEAD
+
+
 =head1 EXAMPLES
 
     # Get and print out the headers and body of the CPAN homepage
@@ -806,15 +984,10 @@ otherwise the results are undefined.
     - Authenitcation/Authorizaton/Proxy-Authorization
       are not directly supported, and require MIME::Base64.
     - Redirects (Location) are not automatically followed
-    - multipart/form-data POSTs are not supported (necessary for
-      File uploads).
+    - multipart/form-data POSTs are not directly supported (necessary
+      for File uploads).
     
 =head1 BUGS
-
-    Large requests are stored in ram, potentially more than once
-    due to HTTP/1.1 chunked transfer mode support.  A future
-    version of this module may support writing requests to a
-    filehandle to avoid excessive disk use.
 
     Some broken HTTP/1.1 servers send incorrect chunk sizes
     when transferring files.  HTTP/1.1 mode is now disabled by
