@@ -59,3 +59,6 @@ Revision history for Perl extension HTTP::Lite.
 	- Added local_addr and local_port settings
 	- Added method setting to allow use of any request method (GET, PUT,
 	  POST, HEAD)
+
+2.1.4 Thu Feb 20 15:45:00 2002
+	- Fixed filedescriptor leak

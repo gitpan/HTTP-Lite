@@ -10,7 +10,7 @@ package HTTP::Lite;
 use vars qw($VERSION);
 use strict qw(vars);
 
-$VERSION = "2.1.3";
+$VERSION = "2.1.4";
 my $BLOCKSIZE = 65536;
 my $CRLF = "\r\n";
 
@@ -134,9 +134,8 @@ sub request
   
   # Setup the connection
   my $proto = getprotobyname('tcp');
-  my $fhname = $url . time();
-  my $fh = *$fhname;
-  socket($fh, PF_INET, SOCK_STREAM, $proto);
+  local *FH;
+  socket(FH, PF_INET, SOCK_STREAM, $proto);
   $port = 80 if !$port;
 
   my $connecthost = $self->{'proxy'} || $host;
@@ -145,7 +144,7 @@ sub request
   $connectport = $connectport ? $connectport : $port;
   my $addr = inet_aton($connecthost);
   if (!$addr) {
-    close($fh);
+    close(FH);
     return undef;
   }
   if ($connecthost ne $host)
@@ -169,13 +168,13 @@ sub request
     $local_port = $self->{'local_port'};
   }
   my $paddr = pack_sockaddr_in($local_port, $local_addr); 
-  bind($fh, $paddr) || return undef;  # Failing to bind is fatal.
+  bind(FH, $paddr) || return undef;  # Failing to bind is fatal.
 
   my $sin = sockaddr_in($connectport,$addr);
-  connect($fh, $sin) || return undef;
+  connect(FH, $sin) || return undef;
   # Set nonblocking IO on the handle to allow timeouts
   if ( $^O ne "MSWin32" ) {
-    fcntl($fh, F_SETFL, O_NONBLOCK);
+    fcntl(FH, F_SETFL, O_NONBLOCK);
   }
 
   if (defined($callback_func)) {
@@ -184,9 +183,9 @@ sub request
 
   # Start the request (HTTP/1.1 mode)
   if ($self->{HTTP11}) {
-    http_write($fh, "$method $object HTTP/1.1$CRLF");
+    http_write(*FH, "$method $object HTTP/1.1$CRLF");
   } else {
-    http_write($fh, "$method $object HTTP/1.0$CRLF");
+    http_write(*FH, "$method $object HTTP/1.0$CRLF");
   }
 
   # Add some required headers
@@ -205,7 +204,7 @@ sub request
   foreach my $header ($self->enum_req_headers())
   {
     my $value = $self->get_req_header($header);
-    http_write($fh, $header.": ".$value."$CRLF");
+    http_write(*FH, $header.": ".$value."$CRLF");
   }
   
   my $content_length;
@@ -221,20 +220,20 @@ sub request
   }  
 
   if ($content_length) {
-    http_write($fh, "Content-Length: $content_length$CRLF");
+    http_write(*FH, "Content-Length: $content_length$CRLF");
   }
   
   if (defined($callback_func)) {
     &$callback_func($self, "done-headers", undef, @$callback_params);
   }  
   # End of headers
-  http_write($fh, "$CRLF");
+  http_write(*FH, "$CRLF");
   
   
   my $content_out = 0;
   if (defined($callback_func)) {
     while (my $content = &$callback_func($self, "content", undef, @$callback_params)) {
-      http_write($fh, $content);
+      http_write(*FH, $content);
       $content_out++;
     }
   } 
@@ -242,7 +241,7 @@ sub request
   # Output content, if any
   if (!$content_out && defined($self->{content}))
   {
-    http_write($fh, $self->{content});
+    http_write(*FH, $self->{content});
   }
   
   if (defined($callback_func)) {
@@ -258,7 +257,7 @@ sub request
   my $chunk;
   my $line = 0;
   my $data;
-  while ($data = $self->http_read($fh,$headmode,$chunkmode,$chunksize))
+  while ($data = $self->http_read(*FH,$headmode,$chunkmode,$chunksize))
   {
     $self->{DEBUG} && $self->DEBUG("reading: $chunkmode, $chunksize, $chunklength, $headmode, ".
         length($self->{'body'}));
@@ -376,7 +375,7 @@ sub request
   if (defined($callback_func)) {
     &$callback_func($self, "done", undef, @$callback_params);
   }
-  close($fh);
+  close(FH);
   return $self->{status};
 }
 
