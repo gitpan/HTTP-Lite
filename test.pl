@@ -1,3 +1,17 @@
+
+# HTTP::Lite - test.pl
+#
+# $Id: test.pl,v 1.2 2000/09/29 03:50:59 rhooper Exp rhooper $
+#
+# $Log: test.pl,v $
+# Revision 1.2  2000/09/29 03:50:59  rhooper
+# Test code significantly changed to query for a server to use and for a
+# proxy server to test.
+#
+# Data is validated for every request.
+#
+#
+
 # Before `make install' is performed this script should be runnable with
 # `make test'. After `make install' it should work as `perl test.pl'
 
@@ -6,10 +20,12 @@
 # Change 1..1 below to 1..last_test_to_print .
 # (It may become useful if the test is moved to ./t subdirectory.)
 
-BEGIN { $| = 1; print "1..6\n"; }
+BEGIN { $| = 1; print "1..21\n"; }
 END {print "not ok 1\n" unless $loaded;}
 use HTTP::Lite;
+use Lite;
 $loaded = 1;
+
 print "ok 1\n";
 
 ######################### End of black magic.
@@ -18,35 +34,159 @@ print "ok 1\n";
 # (correspondingly "not ok 13") depending on the success of chunk 13
 # of the test code):
 
+print STDERR <<EOF;
+
+This is HTTP::Lite $HTTP::Lite::VERSION.
+
+This module requires either an internet connection, or access to an Apache
+1.3 server with Perl and the CGI module instaled.
+
+If you wish to perform tests on a local server, you must copy the contents
+of the test-data directory to the apache server (which may be local).  You
+must be using the 'AddHandler cgi-script .cgi' directive in order for tests
+to be successful, as one many tests currently requires a CGI script.
+
+What is the full URL for the above?  Enter 'none' to skip tests.
+EOF
+print STDERR "Location: [http://www.thetoybox.org/HTTP-Lite-Tests/] ";
+$testpath = <>;
+chomp($testpath);
+$testpath = $testpath ? $testpath : "http://www.thetoybox.org/HTTP-Lite-Tests/";
+
+if ($testpath =~ /\s*'*none'*\s*/)
+{
+	print STDERR "skipping all tests\n";
+	$skip=1;
+} else {
+print STDERR <<EOF;
+
+
+HTTP::Lite now supports HTTP/1.0 or 1.1 Proxies.  
+
+Enter the URL or hostname of the proxy server to use for testing.  Enter
+'none' if you do not have a proxy server suitable for testing.
+EOF
+print STDERR "Proxy: [none] ";
+$proxy = <>;
+
+chomp($proxy);
+$proxy = $proxy ? $proxy : "none";
+
+if ($proxy =~ /\s*'*none'*\s*/)
+{
+	print STDERR "skipping proxy testing\n";
+	$skipproxy=1;
+}
+
+}
+
 $http = new HTTP::Lite;
-$res = $http->request("http://www.cpan.org/");
+
+print "\n\n";
+$testno = 2;
+
+if (!$skip)
+{
+
+$res = $http->request("$testpath/test.txt");
 print "not " if !defined($res);
-print "ok 2\n";
-$http->reset;
+print "ok $testno\n"; $testno++;
+$doc = $http->body;
+print "not " if $doc ne "OK\n";
+print "ok $testno\n"; $testno++;
 
-$res = $http->request("http://notknown.cpan.org/");
+$http->reset;
+$res = $http->request("http://invalidhost.thetoybox.org/");
 print "not " if defined($res);
-print "ok 3\n";
-$http->reset;
+print "ok $testno\n"; $testno++;
 
+$http->reset;
 $res = $http->request("http://localhost:99999/");
 print "not " if defined($res);
-print "ok 4\n";
-$http->reset;
+print "ok $testno\n"; $testno++;
 
+$http->reset;
 %vars = (
-         "QRY" => "perl",
-         "ST" => "MS",
-         "svcclass" => "dncurrent",
-         "DBS" => "2"
+         "a" => "abc",
+         "b" => "hello world&",
         );
 $http->prepare_post(\%vars);
-$res = $http->request("http://www.deja.com/dnquery.xp");
+$res = $http->request("$testpath/post.cgi");
 print "not " if !defined($res);
-print "ok 5\n";
+print "ok $testno\n"; $testno++;
+$doc = $http->body;
+print "not " if $doc ne "a=abc\nb=hello world&\n";
+print "ok $testno\n"; $testno++;
 
 $http->reset;
+$res = $http->request("$testpath/chunked.cgi");
+$doc = $http->body;
+print "not " if length($doc) != 28;
+print "ok $testno\n"; $testno++;
+print "not " if $doc ne "chunk1\nchunk2\nchunk3\nchunk4\n";
+print "ok $testno\n"; $testno++;
 
-$res = $http->request("http://www.cpan.org/");
-print "ok 6\n" if $res;
 $http->reset;
+$res = $http->request("$testpath/chunked2.cgi");
+$doc = $http->body;
+print "not " if length($doc) != 26;
+print "ok $testno\n"; $testno++;
+print "not " if $doc ne "chunk1\nchunk2\nchunk3chunk4";
+print "ok $testno\n"; $testno++;
+
+$http->reset;
+$res = $http->request("$testpath/chunked3.cgi");
+$doc = $http->body;
+print "length not " if length($doc) != 34;
+print "ok $testno\n"; $testno++;
+print "not " if $doc ne "chunk1\nchunk2\nchunk3chunk4chunk5\n\n";
+print "ok $testno\n"; $testno++;
+
+$http->reset;
+$res = $http->request("$testpath/unchunked.html");
+$doc = $http->body;
+print "not " if length($doc) != 33;
+print "ok $testno\n"; $testno++;
+print "not " if $doc ne "unchunked1\nunchunked2\nunchunked3\n";
+print "ok $testno\n"; $testno++;
+
+$http->reset;
+$res = $http->request("$testpath/nonl.html");
+$doc = $http->body;
+print "not " if length($doc) != 17;
+print "ok $testno\n"; $testno++;
+print "not " if $doc ne "line1\nline2\nline3";
+print "ok $testno\n"; $testno++;
+
+$http->reset;
+$res = $http->request("$testpath/nle.html");
+$doc = $http->body;
+print "not " if length($doc) != 19;
+print "ok $testno\n"; $testno++;
+print "not " if $doc ne "line1\nline2\nline3\n\n";
+print "ok $testno\n"; $testno++;
+
+} else {
+  for ($n=$testno; $n < 20; $n++)
+  {
+    print "ok $n (skipping test on this platform)\n";
+  }
+  $testno=$n;
+}
+
+unless ($skip || $skipproxy)
+{
+  $http->reset;
+  $http->proxy($proxy);
+  $res = $http->request("$testpath/test.txt");
+  $doc = $http->body;
+  print "not " if length($doc) != 3;
+  print "ok $testno\n"; $testno++;
+  print "not " if $doc ne "OK\n";
+  print "ok $testno\n"; $testno++;
+} else {
+  print "ok $testno (skipping test on this platform)\n";
+  $testno++;
+  print "ok $testno (skipping test on this platform)\n";
+}
+

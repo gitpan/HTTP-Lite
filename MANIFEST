@@ -3,3 +3,13 @@ Lite.pm
 MANIFEST
 Makefile.PL
 test.pl
+test-data/HTTP-Lite-Tests/chunked.cgi
+test-data/HTTP-Lite-Tests/chunked2.cgi
+test-data/HTTP-Lite-Tests/chunked3.cgi
+test-data/HTTP-Lite-Tests/get.cgi
+test-data/HTTP-Lite-Tests/nle.html
+test-data/HTTP-Lite-Tests/nonl.html
+test-data/HTTP-Lite-Tests/post.cgi
+test-data/HTTP-Lite-Tests/post.cgi~
+test-data/HTTP-Lite-Tests/test.txt
+test-data/HTTP-Lite-Tests/unchunked.html
