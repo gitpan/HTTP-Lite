@@ -60,5 +60,8 @@ Revision history for Perl extension HTTP::Lite.
 	- Added method setting to allow use of any request method (GET, PUT,
 	  POST, HEAD)
 
-2.1.4 Thu Feb 20 15:45:00 2002
-	- Fixed filedescriptor leak
+2.1.5 Sun Oct  5 20:55:00 2003
+	- Fixed duplicate my in method()
+	- Added default content-type for posts
+	- header_at_once mode, patch submitted by Roman Radaschutz
+

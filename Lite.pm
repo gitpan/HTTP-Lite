@@ -10,9 +10,10 @@ package HTTP::Lite;
 use vars qw($VERSION);
 use strict qw(vars);
 
-$VERSION = "2.1.4";
+$VERSION = "2.1.5";
 my $BLOCKSIZE = 65536;
 my $CRLF = "\r\n";
+my $URLENCODE_VALID = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.";
 
 # Required modules for Network I/O
 use Socket 1.3;
@@ -25,6 +26,17 @@ sub http_write;
 sub http_readline;
 sub http_read;
 sub http_readbytes;
+
+# Prepare the urlencode validchars lookup hash
+my @urlencode_valid;
+foreach my $char (split('', $URLENCODE_VALID)) {
+  $urlencode_valid[ord $char]=$char;
+}
+for (my $n=0;$n<255;$n++) {
+  if (!defined($urlencode_valid[$n])) {
+    $urlencode_valid[$n]=sprintf("%%%02X", $n);
+  }
+}
 
 sub new 
 {
@@ -41,6 +53,14 @@ sub initialize
   $self->{timeout} = 120;
   $self->{HTTP11} = 0;
   $self->{DEBUG} = 0;
+  $self->{header_at_once} = 0; 
+  $self->{holdback} = 0;       # needed for http_write 
+}
+
+sub header_at_once
+{
+  my $self=shift;
+  $self->{header_at_once} = 1;
 }
 
 sub local_addr
@@ -67,9 +87,9 @@ sub local_port
 
 sub method
 {
-  my $self=shift;
+  my $self = shift;
   my $method = shift;
-  my $method = uc($method);
+  $method = uc($method);
   $self->{method} = $method;
 }
 
@@ -93,14 +113,15 @@ sub reset
   $self->{HTTPReadBuffer} = "";
   $self->{method} = "GET";
   $self->{headers} = { 'User-Agent' => "HTTP::Lite/$VERSION" };
+  $self->{headermap} = { 'user-agent'  => 'User-Agent' };
 }
 
 
 # URL-encode data
 sub escape {
   my $toencode = shift;
-  $toencode=~s/([^a-zA-Z0-9_.-])/uc sprintf("%%%02x",ord($1))/eg;
-  return $toencode;
+  return join('', 
+    map { $urlencode_valid[ord $_] } split('', $toencode));
 }
 
 sub set_callback {
@@ -181,11 +202,15 @@ sub request
     &$callback_func($self, "connect", undef, @$callback_params);
   }  
 
+  if ($self->{header_at_once}) {
+    $self->{holdback} = 1;    # http_write should buffer only, no sending yet
+  }
+
   # Start the request (HTTP/1.1 mode)
   if ($self->{HTTP11}) {
-    http_write(*FH, "$method $object HTTP/1.1$CRLF");
+    $self->http_write(*FH, "$method $object HTTP/1.1$CRLF");
   } else {
-    http_write(*FH, "$method $object HTTP/1.0$CRLF");
+    $self->http_write(*FH, "$method $object HTTP/1.0$CRLF");
   }
 
   # Add some required headers
@@ -193,7 +218,11 @@ sub request
   $self->add_req_header("Connection", "close");    
   $self->add_req_header("Host", $host);
   if (!defined($self->get_req_header("Accept"))) {
-	  $self->add_req_header("Accept", "*/*");
+    $self->add_req_header("Accept", "*/*");
+  }
+
+  if ($method eq 'POST') {
+    http_write(*FH, "Content-Type: application/x-www-form-urlencoded$CRLF");
   }
   
   # Purge a couple others
@@ -204,7 +233,7 @@ sub request
   foreach my $header ($self->enum_req_headers())
   {
     my $value = $self->get_req_header($header);
-    http_write(*FH, $header.": ".$value."$CRLF");
+    $self->http_write(*FH, $header.": ".$value."$CRLF");
   }
   
   my $content_length;
@@ -220,20 +249,24 @@ sub request
   }  
 
   if ($content_length) {
-    http_write(*FH, "Content-Length: $content_length$CRLF");
+    $self->http_write(*FH, "Content-Length: $content_length$CRLF");
   }
   
   if (defined($callback_func)) {
     &$callback_func($self, "done-headers", undef, @$callback_params);
   }  
   # End of headers
-  http_write(*FH, "$CRLF");
+  $self->http_write(*FH, "$CRLF");
   
+  if ($self->{header_at_once}) {
+    $self->{holdback} = 0; 
+    $self->http_write(*FH, ""); # pseudocall to get http_write going
+  }  
   
   my $content_out = 0;
   if (defined($callback_func)) {
     while (my $content = &$callback_func($self, "content", undef, @$callback_params)) {
-      http_write(*FH, $content);
+      $self->http_write(*FH, $content);
       $content_out++;
     }
   } 
@@ -241,7 +274,7 @@ sub request
   # Output content, if any
   if (!$content_out && defined($self->{content}))
   {
-    http_write(*FH, $self->{content});
+    $self->http_write(*FH, $self->{content});
   }
   
   if (defined($callback_func)) {
@@ -303,7 +336,7 @@ sub request
       my ($var,$datastr) = $$data =~ /^([^:]*):\s*(.*)$/;
       if (defined($var))
       {
-	$datastr =~s/[\r\n]$//g;
+        $datastr =~s/[\r\n]$//g;
         $var = lc($var);
         $var =~ s/^(.)/&upper($1)/ge;
         $var =~ s/(-.)/&upper($1)/ge;
@@ -566,13 +599,23 @@ sub prepare_post
 
 sub http_write
 {
+  my $self = shift;
   my ($fh,$line) = @_;
 
-  my $size = length($line);
-  my $bytes = syswrite($fh, $line, 4096, 0 );
+  if ($self->{holdback}) {
+     $self->{HTTPWriteBuffer} .= $line;
+     return;
+  } else {
+     if (defined $self->{HTTPWriteBuffer}) {   # copy previously buffered, if any
+         $line = $self->{HTTPWriteBuffer} . $line;
+     }
+  }
 
+  my $size = length($line);
+  my $bytes = syswrite($fh, $line, length($line) , 0 );  # please double check new length limit
+                                                         # is this ok?
   while ( ($size - $bytes) > 0) {
-    $bytes += syswrite($fh, $line, 4096, $bytes );
+    $bytes += syswrite($fh, $line, length($line)-$bytes, $bytes );  # also here
   }
 }
  
@@ -586,8 +629,8 @@ sub http_read
   my $res;
   if (($headmode == 0 && $chunkmode eq "0") || ($chunkmode eq "chunk")) {
     my $bytes_to_read = $chunkmode eq "chunk" ?
-	($chunksize < $BLOCKSIZE ? $chunksize : $BLOCKSIZE) :
-	$BLOCKSIZE;
+        ($chunksize < $BLOCKSIZE ? $chunksize : $BLOCKSIZE) :
+        $BLOCKSIZE;
     $res = $self->http_readbytes($fh,$self->{timeout},$bytes_to_read);
   } else { 
     $res = $self->http_readline($fh,$self->{timeout});  
