@@ -2,9 +2,13 @@
 #
 # HTTP::Lite.pm
 #
-# $Id: Lite.pm,v 1.6 2000/11/02 01:47:58 rhooper Exp rhooper $
+# $Id: Lite.pm,v 1.7 2000/12/21 18:05:09 rhooper Exp rhooper $
 #
 # $Log: Lite.pm,v $
+# Revision 1.7  2000/12/21 18:05:09  rhooper
+# FIxed post form MIME-Type -- was application/x-www-urlencoded should
+# have been x-www-form-urlencoded.
+#
 # Revision 1.6  2000/11/02 01:47:58  rhooper
 # Fixed a greedy regular expression in the URL decoder.  URLs with :// embedded now work.
 #
@@ -29,7 +33,7 @@ package HTTP::Lite;
 use vars qw($VERSION);
 use strict qw(vars);
 
-$VERSION = "0.2.4";
+$VERSION = "0.2.5";
 my $CRLF = "\r\n";
 
 # Required modules for Network I/O
@@ -386,7 +390,7 @@ sub prepare_post
     }
   }
   $self->{content} = $body;
-  $self->{headers}{'Content-Type'} = "application/x-www-urlencoded";
+  $self->{headers}{'Content-Type'} = "application/x-www-form-urlencoded";
   $self->{method} = "POST";
 }
 

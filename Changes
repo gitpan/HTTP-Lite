@@ -5,5 +5,10 @@ Revision history for Perl extension HTTP::Lite.
 
 0.03  Sat Sep  9 14:05:00 2000
         - fixed two minor bugs as found and reported by "Marcus I. Ryan"
-<shad@cce-7.cce.iastate.edu>.  See Lite.pm for details.
+	  <shad@cce-7.cce.iastate.edu>.  See Lite.pm for details.
+
+1.2.5 Thu Dec 21 13:09:00 2000
+	- fixed minor bug with MIME type provided for posts to be
+	  x-www-form-urlencoded, as reported by 
+	  Tobias Kunze <Tobias.Kunze@horz.de>
 
