@@ -65,3 +65,8 @@ Revision history for Perl extension HTTP::Lite.
 	- Added default content-type for posts
 	- header_at_once mode, patch submitted by Roman Radaschutz
 
+2.1.6 Wed Jan 21 16:54:31 2004
+	- Fixed User-Agent header problem
+	- Fixed lowercase header bugs
+	- Thanks goes to contributed patches by various people
+

@@ -10,7 +10,7 @@ package HTTP::Lite;
 use vars qw($VERSION);
 use strict qw(vars);
 
-$VERSION = "2.1.5";
+$VERSION = "2.1.6";
 my $BLOCKSIZE = 65536;
 my $CRLF = "\r\n";
 my $URLENCODE_VALID = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.";
@@ -112,7 +112,7 @@ sub reset
   }
   $self->{HTTPReadBuffer} = "";
   $self->{method} = "GET";
-  $self->{headers} = { 'User-Agent' => "HTTP::Lite/$VERSION" };
+  $self->{headers} = { 'user-agent' => "HTTP::Lite/$VERSION" };
   $self->{headermap} = { 'user-agent'  => 'User-Agent' };
 }
 
@@ -216,13 +216,17 @@ sub request
   # Add some required headers
   # we only support a single transaction per request in this version.
   $self->add_req_header("Connection", "close");    
-  $self->add_req_header("Host", $host);
+  if ($port != 80) {
+    $self->add_req_header("Host", "$host:$port");
+  } else {
+    $self->add_req_header("Host", $host);
+  }
   if (!defined($self->get_req_header("Accept"))) {
     $self->add_req_header("Accept", "*/*");
   }
 
   if ($method eq 'POST') {
-    http_write(*FH, "Content-Type: application/x-www-form-urlencoded$CRLF");
+    $self->http_write(*FH, "Content-Type: application/x-www-form-urlencoded$CRLF");
   }
   
   # Purge a couple others
@@ -233,7 +237,7 @@ sub request
   foreach my $header ($self->enum_req_headers())
   {
     my $value = $self->get_req_header($header);
-    $self->http_write(*FH, $header.": ".$value."$CRLF");
+    $self->http_write(*FH, $self->{headermap}{$header}.": ".$value."$CRLF");
   }
   
   my $content_length;
