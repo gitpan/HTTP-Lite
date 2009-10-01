@@ -1,24 +1,19 @@
-
-#
-# HTTP::Lite.pm
-#
-# $Id: Lite.pm,v 1.11 2002/06/13 19:53:48 rhooper Exp rhooper $
-#
-
 package HTTP::Lite;
 
-use vars qw($VERSION);
-use strict qw(vars);
-
-$VERSION = "2.1.6";
-my $BLOCKSIZE = 65536;
-my $CRLF = "\r\n";
-my $URLENCODE_VALID = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.";
-
-# Required modules for Network I/O
+use 5.005;
+use strict;
 use Socket 1.3;
 use Fcntl;
 use Errno qw(EAGAIN);
+
+use vars qw($VERSION);
+BEGIN {
+	$VERSION = "2.2";
+}
+
+my $BLOCKSIZE = 65536;
+my $CRLF = "\r\n";
+my $URLENCODE_VALID = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.";
 
 # Forward declarations
 sub prepare_post;
@@ -989,6 +984,7 @@ system choose.
 Explicity set the method.  Using prepare_post or reset overrides this
 setting.  Usual choices are GET, POST, PUT, HEAD
 
+=back
 
 =head1 EXAMPLES
 
@@ -1051,6 +1047,8 @@ RFC 2068 - HTTP/1.1 -http://www.w3.org/
 =head1 COPYRIGHT
 
 Copyright (c) 2000-2002 Roy Hooper.  All rights reserved.
+
+Some parts copyright 2009 Adam Kennedy.
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.
