@@ -3,7 +3,7 @@ NAME
 
 SYNOPSIS
         use HTTP::Lite;
-        $http = new HTTP::Lite;
+        $http = HTTP::Lite->new;
         $req = $http->request("http://www.cpan.org/") 
             or die "Unable to get document: $!";
         print $http->body();
@@ -75,7 +75,7 @@ METHODS
           }
 
           $url = "$testpath/bigbinary.dat";
-          open OUT, ">bigbinary.dat";
+          open OUT, '>','bigbinary.dat';
           $res = $http->request($url, \&savetofile, OUT);
           close OUT;
 
@@ -92,19 +92,19 @@ METHODS
 
           connect - connection has been established and headers are being
                     transmitted.
-                    
-  content-length - return value is used as the content-length.  If undef,
+
+          content-length - return value is used as the content-length.  If undef,
                     and prepare_post() was used, the content length is
                     calculated.
-                           
-  done-headers - all headers have been sent
-          
-  content - return value is used as content and is sent to client.  Return
+
+          done-headers - all headers have been sent
+
+          content - return value is used as content and is sent to client.  Return
                     undef to use the internal content defined by prepare_post().
-                    
-  content-done - content has been successfuly transmitted.
-          
-  data - A block of data has been received.  The data is referenced by
+
+          content-done - content has been successfuly transmitted.
+
+          data - A block of data has been received.  The data is referenced by
                     $dataref.  The return value is dereferenced and replaces the
                     content passed in.  Return undef to avoid using memory for large
                     documents.
@@ -131,7 +131,7 @@ METHODS
 
             use HTTP::Lite;
             use MIME::Base64;
-            $http = new HTTP::Lite;
+            $http = HTTP::Lite->new;
             $encoded = encode_base64('username:password');
             $http->add_req_header("Authorization", $encoded);
 
@@ -181,7 +181,7 @@ METHODS
         system choose.
 
     local_port ( $port )
-        Explicity select the local port. 0 (default and reccomended) lets
+        Explicity select the local port. 0 (default and recommended) lets
         the system choose.
 
     method ( $method )
@@ -191,7 +191,7 @@ METHODS
 EXAMPLES
         # Get and print out the headers and body of the CPAN homepage
         use HTTP::Lite;
-        $http = new HTTP::Lite;
+        $http = HTTP::Lite->new;
         $req = $http->request("http://www.cpan.org/")
             or die "Unable to get document: $!";
         die "Request failed ($req): ".$http->status_message()
@@ -207,7 +207,7 @@ EXAMPLES
 
         # POST a query to the dejanews USENET search engine
         use HTTP::Lite;
-        $http = new HTTP::Lite;
+        $http = HTTP::Lite->new;
         %vars = (
                  "QRY" => "perl",
                  "ST" => "MS",
@@ -243,7 +243,7 @@ SEE ALSO
 COPYRIGHT
     Copyright (c) 2000-2002 Roy Hooper. All rights reserved.
 
-    Some parts copyright 2009 Adam Kennedy.
+    Some parts copyright 2009 - 2010 Adam Kennedy.
 
     This program is free software; you can redistribute it and/or modify it
     under the same terms as Perl itself.
