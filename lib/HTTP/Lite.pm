@@ -8,7 +8,7 @@ use Errno qw(EAGAIN);
 
 use vars qw($VERSION);
 BEGIN {
-	$VERSION = "2.3_1";
+	$VERSION = "2.3_2";
 }
 
 my $BLOCKSIZE = 65536;
@@ -27,7 +27,7 @@ my @urlencode_valid;
 foreach my $char (split('', $URLENCODE_VALID)) {
   $urlencode_valid[ord $char]=$char;
 }
-for (my $n=0;$n<255;$n++) {
+for (my $n=0;$n<256;$n++) {
   if (!defined($urlencode_valid[$n])) {
     $urlencode_valid[$n]=sprintf("%%%02X", $n);
   }
@@ -139,7 +139,7 @@ sub request
 
   # Parse URL 
   my ($protocol,$host,$junk,$port,$object) = 
-    $url =~ m{^([^:/]+)://([^/:]*)(:(\d+))?(/.*)$};
+    $url =~ m{^([^:/]+)://([^/:]*)(:(\d+))?(/?.*)$};
 
   # Only HTTP is supported here
   if ($protocol ne "http")
@@ -446,6 +446,7 @@ sub add_req_header
   my $self = shift;
   my ($header, $value) = @_;
   
+  return unless defined($value);
   my $lcheader = lc($header);
   $self->{DEBUG} && $self->DEBUG("add_req_header $header $value");
   ${$self->{headers}}{$lcheader} = $value;
@@ -611,11 +612,13 @@ sub http_write
   }
 
   my $size = length($line);
-  my $bytes = syswrite($fh, $line, length($line) , 0 );  # please double check new length limit
-                                                         # is this ok?
-  while ( ($size - $bytes) > 0) {
-    $bytes += syswrite($fh, $line, length($line)-$bytes, $bytes );  # also here
-  }
+  my $total_sent = 0;
+  my $nbytes;
+  do {
+    $nbytes = syswrite($fh, $line, $size - $total_sent, $total_sent );
+    die $! unless(defined($nbytes) || $!{EAGAIN}); # non-recoverable error occured! 
+    $total_sent += $nbytes;
+  } while ($total_sent < $size);
 }
  
 sub http_read
@@ -775,7 +778,7 @@ HTTP::Lite - Lightweight HTTP implementation
 
 HTTP::Lite is a stand-alone lightweight HTTP/1.1 implementation
 for perl.  It is not intended as a replacement for the
-fully-features LWP module.  Instead, it is intended for use in
+fully-featured LWP module.  Instead, it is intended for use in
 situations where it is desirable to install the minimal number of
 modules to achieve HTTP support, or where LWP is not a good
 candidate due to CPU overhead, such as slower processors.
@@ -905,10 +908,13 @@ broken HTTP/1.1 servers.  Use 1 to enable HTTP/1.1 support.
 
 =item delete_req_header ( $header )
 
-Add, Delete, or a HTTP header(s) for the request.  These functions
+Add, Delete, or get a HTTP header(s) for the request.  These functions
 allow you to override any header.  Presently, Host, User-Agent,
 Content-Type, Accept, and Connection are pre-defined by the HTTP::Lite
 module.  You may not override Host, Connection, or Accept.
+
+If you call C<add_req_header()> with C<$value> set to C<undef>,
+then the header won't be added.
 
 To provide (proxy) authentication or authorization, you would use:
 
@@ -1039,7 +1045,7 @@ HTTP/1.1 mode is now disabled by default.
 Roy Hooper <rhooper@thetoybox.org>
 
 Now co-maintained by Neil Bowers E<lt>neilb@cpan.orgE<gt>.
-This is a developer release to check everything's ok before I do anything else.
+This is a developer release after fixing some bugs, before doing a regular release.
 
 =head1 SEE ALSO
 
